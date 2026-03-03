@@ -1,7 +1,9 @@
 import { Monster } from '@/types/Monster';
 import {
-  AKKHA_IDS, ARAXXOR_IDS,
+  AKKHA_IDS,
+  ARAXXOR_IDS,
   BABA_IDS,
+  HUEYCOATL_IDS,
   KEPHRI_SHIELDED_IDS,
   KEPHRI_UNSHIELDED_IDS,
   NEX_IDS,
@@ -10,14 +12,14 @@ import {
   SOTETSEG_IDS,
   TOA_OBELISK_IDS,
   VARDORVIS_IDS,
-  VERZIK_IDS,
+  VERZIK_IDS, YAMA_IDS,
   ZEBAK_IDS,
 } from '@/lib/constants';
 import { keys } from '@/utils';
 import { MonsterAttribute } from '@/enums/MonsterAttribute';
 import { Factor } from '@/lib/Math';
 
-const getDefenceFloor = (m: Monster): number => {
+export const getDefenceFloor = (m: Monster): number => {
   if (VERZIK_IDS.includes(m.id) || VARDORVIS_IDS.includes(m.id)) {
     return m.skills.def;
   }
@@ -50,6 +52,12 @@ const getDefenceFloor = (m: Monster): number => {
   }
   if (ARAXXOR_IDS.includes(m.id)) {
     return 90;
+  }
+  if (HUEYCOATL_IDS.includes(m.id)) {
+    return 120;
+  }
+  if (YAMA_IDS.includes(m.id)) {
+    return 145;
   }
 
   // no limit
@@ -119,6 +127,12 @@ const applyDefenceReductions = (m: Monster): Monster => {
     });
   }
 
+  if (reductions.seercull > 0) {
+    m = newSkills(m, {
+      magic: m.skills.magic - reductions.seercull,
+    });
+  }
+
   let bgsDmg = reductions.bgs;
   if (bgsDmg > 0) {
     const applyBgsDmg = (monster: Monster, k: keyof Monster['skills']): Monster => {
@@ -139,6 +153,17 @@ const applyDefenceReductions = (m: Monster): Monster => {
     m = applyBgsDmg(m, 'atk');
     m = applyBgsDmg(m, 'magic');
     m = applyBgsDmg(m, 'ranged');
+  }
+
+  if (reductions.ayak > 0 && m.defensive.magic > 0) {
+    const newMagicDef = Math.max(0, m.defensive.magic - reductions.ayak);
+    m = {
+      ...m,
+      defensive: {
+        ...m.defensive,
+        magic: newMagicDef,
+      },
+    };
   }
 
   return m;

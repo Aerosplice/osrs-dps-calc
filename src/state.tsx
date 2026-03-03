@@ -1,3 +1,5 @@
+// noinspection FallThroughInSwitchStatementJS
+
 import {
   autorun, IReactionDisposer, IReactionPublic, makeAutoObservable, reaction, toJS,
 } from 'mobx';
@@ -5,7 +7,15 @@ import React, { createContext, useContext } from 'react';
 import { PartialDeep } from 'type-fest';
 import * as localforage from 'localforage';
 import {
-  CalculatedLoadout, Calculator, IMPORT_VERSION, ImportableData, PlayerVsNPCCalculatedLoadout, Preferences, State, UI, UserIssue,
+  CalculatedLoadout,
+  Calculator,
+  IMPORT_VERSION,
+  ImportableData,
+  PlayerVsNPCCalculatedLoadout,
+  Preferences,
+  State,
+  UI,
+  UserIssue,
 } from '@/types/State';
 import merge from 'lodash.mergewith';
 import {
@@ -15,17 +25,29 @@ import { Monster } from '@/types/Monster';
 import { MonsterAttribute } from '@/enums/MonsterAttribute';
 import { toast } from 'react-toastify';
 import {
-  fetchPlayerSkills, fetchShortlinkData, getCombatStylesForCategory, PotionMap,
+  fetchPlayerSkills,
+  fetchShortlinkData,
+  getCombatStylesForCategory,
+  isDefined,
+  PotionMap,
 } from '@/utils';
 import { ComputeBasicRequest, ComputeReverseRequest, WorkerRequestType } from '@/worker/CalcWorkerTypes';
 import { getMonsters, INITIAL_MONSTER_INPUTS } from '@/lib/Monsters';
 import { availableEquipment, calculateEquipmentBonusesFromGear } from '@/lib/Equipment';
 import { CalcWorker } from '@/worker/CalcWorker';
 import { spellByName } from '@/types/Spell';
-import { NUMBER_OF_LOADOUTS } from '@/lib/constants';
+import {
+  DEFAULT_ATTACK_SPEED, INFINITE_HEALTH_MONSTERS,
+  NUMBER_OF_LOADOUTS,
+} from '@/lib/constants';
 import { EquipmentCategory } from './enums/EquipmentCategory';
 import {
-  ARM_PRAYERS, BRAIN_PRAYERS, DEFENSIVE_PRAYERS, OFFENSIVE_PRAYERS, OVERHEAD_PRAYERS, Prayer,
+  ARM_PRAYERS,
+  BRAIN_PRAYERS,
+  DEFENSIVE_PRAYERS,
+  OFFENSIVE_PRAYERS,
+  OVERHEAD_PRAYERS,
+  Prayer,
 } from './enums/Prayer';
 import Potion from './enums/Potion';
 import { startPollingForRuneLite, WikiSyncer } from './wikisync/WikiSyncer';
@@ -61,6 +83,7 @@ export const generateEmptyPlayer = (name?: string): Player => ({
     ranged: 99,
     str: 99,
     mining: 99,
+    herblore: 99,
   },
   boosts: {
     atk: 0,
@@ -71,8 +94,10 @@ export const generateEmptyPlayer = (name?: string): Player => ({
     ranged: 0,
     str: 0,
     mining: 0,
+    herblore: 0,
   },
   equipment: generateInitialEquipment(),
+  attackSpeed: DEFAULT_ATTACK_SPEED,
   prayers: [],
   bonuses: {
     str: 0,
@@ -98,7 +123,7 @@ export const generateEmptyPlayer = (name?: string): Player => ({
     potions: [],
     onSlayerTask: true,
     inWilderness: false,
-    kandarinDiary: false,
+    kandarinDiary: true,
     chargeSpell: false,
     markOfDarknessSpell: false,
     forinthrySurge: false,
@@ -168,6 +193,7 @@ class GlobalState implements State {
       str: 0,
     },
     defensive: {
+      flat_armour: 0,
       stab: 20,
       slash: 20,
       crush: 20,
@@ -178,6 +204,9 @@ class GlobalState implements State {
     },
     attributes: [MonsterAttribute.DEMON],
     weakness: null,
+    immunities: {
+      burn: null,
+    },
     inputs: { ...INITIAL_MONSTER_INPUTS },
   };
 
@@ -247,7 +276,7 @@ class GlobalState implements State {
     const recomputeBoosts = () => {
       // Re-compute the player's boost values.
       const boosts: Partial<PlayerSkills> = {
-        atk: 0, def: 0, magic: 0, prayer: 0, ranged: 0, str: 0, mining: 0,
+        atk: 0, def: 0, magic: 0, prayer: 0, ranged: 0, str: 0, mining: 0, herblore: 0,
       };
 
       for (const p of this.player.buffs.potions) {
@@ -327,7 +356,6 @@ class GlobalState implements State {
 
     // Determine the current global/UI-related issues
     // ex. is.push({ type: UserIssueType.MONSTER_UNIQUE_EFFECTS, message: 'This monster has unique effects that are not yet accounted for. Results may be inaccurate.' });
-
     // Add in the issues returned from the calculator
     for (const l of Object.values(this.calc.loadouts)) {
       if (l.userIssues) is = [...is, ...l.userIssues];
@@ -384,19 +412,17 @@ class GlobalState implements State {
     this.calcWorker = worker;
   }
 
-  recalculateEquipmentBonusesFromGear(loadoutIx?: number) {
+  updateEquipmentBonuses(loadoutIx?: number) {
     loadoutIx = loadoutIx !== undefined ? loadoutIx : this.selectedLoadout;
 
-    const totals = calculateEquipmentBonusesFromGear(this.loadouts[loadoutIx], this.monster);
-    this.updatePlayer({
-      bonuses: totals.bonuses,
-      offensive: totals.offensive,
-      defensive: totals.defensive,
-    }, loadoutIx);
+    this.loadouts[loadoutIx] = merge(
+      this.loadouts[loadoutIx],
+      calculateEquipmentBonusesFromGear(this.loadouts[loadoutIx], this.monster),
+    );
   }
 
   recalculateEquipmentBonusesFromGearAll() {
-    this.loadouts.forEach((_, i) => this.recalculateEquipmentBonusesFromGear(i));
+    this.loadouts.forEach((_, i) => this.updateEquipmentBonuses(i));
   }
 
   updateUIState(ui: PartialDeep<UI>) {
@@ -443,9 +469,38 @@ class GlobalState implements State {
       case 1:
         data.monster.inputs.phase = data.monster.inputs.tormentedDemonPhase;
 
+      case 2: // reserved: used during leagues 5
+      case 3: // reserved: used during leagues 5
+      case 4: // reserved: used during leagues 5
+      case 5:
+        data.loadouts.forEach((l) => {
+          /* eslint-disable @typescript-eslint/dot-notation */
+          /* eslint-disable @typescript-eslint/no-explicit-any */
+          if ((l as any)['leagues']) {
+            delete (l as any)['leagues'];
+          }
+          /* eslint-enable @typescript-eslint/dot-notation */
+          /* eslint-enable @typescript-eslint/no-explicit-any */
+        });
+
+      case 6:
+        // partyAvgMiningLevel becomes partySumMiningLevel
+        if (isDefined(data.monster.inputs.partyAvgMiningLevel)) {
+          data.monster.inputs.partySumMiningLevel = data.monster.inputs.partyAvgMiningLevel * data.monster.inputs.partySize;
+          delete data.monster.inputs.partyAvgMiningLevel;
+        }
+
+      case 7:
+        if (!isDefined(data.monster.immunities)) {
+          data.monster.immunities = {
+            burn: null,
+          };
+        }
+
       default:
     }
     /* eslint-enable no-fallthrough */
+    console.debug('IMPORT | ', data);
 
     if (data.monster) {
       let newMonster: PartialDeep<Monster> = {};
@@ -653,9 +708,7 @@ class GlobalState implements State {
 
     this.loadouts[loadoutIx] = merge(this.loadouts[loadoutIx], player);
     if (!this.prefs.manualMode) {
-      if (eq || Object.hasOwn(player, 'spell') || Object.hasOwn(player, 'style')) {
-        this.recalculateEquipmentBonusesFromGear(loadoutIx);
-      }
+      this.updateEquipmentBonuses(loadoutIx);
     }
   }
 
@@ -782,7 +835,7 @@ class GlobalState implements State {
       request(WorkerRequestType.COMPUTE_REVERSE),
     );
 
-    if (this.prefs.showTtkComparison) {
+    if (this.prefs.showTtkComparison && !INFINITE_HEALTH_MONSTERS.includes(this.monster.id)) {
       promises.push(
         (async () => {
           const parallel = process.env.NEXT_PUBLIC_SERIAL_TTK !== 'true';

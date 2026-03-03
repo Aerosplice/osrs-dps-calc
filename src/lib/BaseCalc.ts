@@ -1,9 +1,14 @@
 import { EquipmentPiece, Player } from '@/types/Player';
-import { Monster } from '@/types/Monster';
+import { BurnImmunity, Monster } from '@/types/Monster';
 import { AmmoApplicability, ammoApplicability, getCanonicalEquipment } from '@/lib/Equipment';
 import UserIssueType from '@/enums/UserIssueType';
 import { MonsterAttribute } from '@/enums/MonsterAttribute';
-import { CAST_STANCES } from '@/lib/constants';
+import {
+  CAST_STANCES,
+  IMMUNE_TO_BURN_DAMAGE_NPC_IDS,
+  YAMA_IDS,
+  YAMA_VOID_FLARE_IDS,
+} from '@/lib/constants';
 import { UserIssue } from '@/types/State';
 import { CalcDetails, DetailEntry } from '@/lib/CalcDetails';
 import { Factor } from '@/lib/Math';
@@ -106,7 +111,16 @@ export default class BaseCalc {
 
   protected trackAdd(label: Parameters<CalcDetails['track']>[0], base: number, addend: number): number {
     const result = Math.trunc(base + addend);
-    this.track(label, result, `${base} ${addend >= 0 ? '+' : '-'} ${-addend} = ${result}`);
+    this.track(label, result, `${base} ${addend >= 0 ? `+${addend}` : `-${-addend}`} = ${result}`);
+    return result;
+  }
+
+  protected trackAddFactor(label: Parameters<CalcDetails['track']>[0], base: number, factor: Factor): number {
+    const addend = Math.trunc(base * factor[0] / factor[1]);
+    const result = Math.trunc(base + addend);
+    const multStr = factor[0] !== 1 ? ` * ${factor[0]}` : '';
+    const divStr = factor[1] !== 1 ? ` / ${factor[1]}` : '';
+    this.track(label, result, `${base} + (${base}${multStr}${divStr} = ${addend}) = ${result}`);
     return result;
   }
 
@@ -152,6 +166,12 @@ export default class BaseCalc {
     if (atk < 0 && def >= 0) return 0;
     if (atk < 0 && def < 0) return rvRoll(-def, -atk);
     return 0;
+  }
+
+  public static getConflictionGauntletsAccuracyRoll(atk: number, def: number): number {
+    const singleRoll = this.getNormalAccuracyRoll(atk, def);
+    const doubleRoll = this.getFangAccuracyRoll(atk, def);
+    return doubleRoll / (1 + doubleRoll - singleRoll);
   }
 
   /**
@@ -270,7 +290,7 @@ export default class BaseCalc {
    * @see https://oldschool.runescape.wiki/w/Smoke_battlestaff
    */
   protected isWearingSmokeStaff(): boolean {
-    return this.wearing(['Smoke battlestaff', 'Mystic smoke staff']);
+    return this.wearing(['Smoke battlestaff', 'Mystic smoke staff', 'Twinflame staff']);
   }
 
   /**
@@ -341,6 +361,7 @@ export default class BaseCalc {
       "Torag's hammers",
       'Sulphur blades',
       'Glacial temotli',
+      'Earthbound tecpatl',
     ]);
   }
 
@@ -369,7 +390,7 @@ export default class BaseCalc {
   }
 
   /**
-   * Whether the player is wearing the entire Karil the Tainted's equipment set.
+   * Whether the player is wearing the entire Karil the Tainted's equipment set including a damned item.
    * @see https://oldschool.runescape.wiki/w/Karil_the_Tainted%27s_equipment
    */
   protected isWearingKarils(): boolean {
@@ -377,7 +398,7 @@ export default class BaseCalc {
   }
 
   /**
-   * Whether the player is wearing the entire Ahrim the Blighted's equipment set.
+   * Whether the player is wearing the entire Ahrim the Blighted's equipment set including a damned item.
    * @see https://oldschool.runescape.wiki/w/Ahrim_the_Blighted%27s_equipment
    */
 
@@ -386,7 +407,7 @@ export default class BaseCalc {
   }
 
   /**
-   * Whether the player is wearing the entire Torag the Corrupted's equipment set.
+   * Whether the player is wearing the entire Torag the Corrupted's equipment set including a damned item.
    * @see https://oldschool.runescape.wiki/w/Torag_the_Corrupted%27s_equipment
    */
   protected isWearingTorags(): boolean {
@@ -429,15 +450,18 @@ export default class BaseCalc {
   }
 
   /**
-   * Whether the player is wearing an Ivandis weapon--that is, a weapon capable of harming Tier 3 Vampyres.
+   * Whether the player is using a vampyrebane weapon capable of full damage against t2 or t3 vampyres
    * @see https://oldschool.runescape.wiki/w/Silver_weaponry
    */
-  protected isWearingIvandisWeapon(): boolean {
-    return this.isUsingMeleeStyle() && this.wearing([
-      'Ivandis flail',
-      'Blisterwood sickle',
-      'Blisterwood flail',
-    ]);
+  protected wearingVampyrebane(tier: MonsterAttribute.VAMPYRE_2 | MonsterAttribute.VAMPYRE_3): boolean {
+    const t2 = tier === MonsterAttribute.VAMPYRE_2;
+    return (t2 || this.isUsingMeleeStyle())
+      && this.wearing([
+        ...(t2 ? ['Rod of ivandis'] : []),
+        'Ivandis flail',
+        'Blisterwood sickle',
+        'Blisterwood flail',
+      ]);
   }
 
   protected isWearingMsb(): boolean {
@@ -586,6 +610,10 @@ export default class BaseCalc {
       && this.wearing(['Abyssal bludgeon', 'Abyssal dagger', 'Abyssal whip', 'Abyssal tentacle']);
   }
 
+  protected isWearingOgreBow(): boolean {
+    return this.wearing(['Ogre bow', 'Comp ogre bow']);
+  }
+
   protected tdUnshieldedBonusApplies(): boolean {
     if (this.monster.name !== 'Tormented Demon' || this.monster.inputs.phase !== 'Unshielded') {
       return false;
@@ -606,12 +634,51 @@ export default class BaseCalc {
     }
   }
 
+  protected isAmmoInvalid(): boolean {
+    return ammoApplicability(this.player.equipment.weapon?.id, this.player.equipment.ammo?.id) === AmmoApplicability.INVALID;
+  }
+
+  protected isImmuneToNormalBurns(): boolean {
+    return this.monster.immunities.burn === BurnImmunity.NORMAL
+      || this.isImmuneToStrongBurns();
+  }
+
+  protected isImmuneToStrongBurns(): boolean {
+    return this.monster.immunities.burn === BurnImmunity.STRONG
+      || IMMUNE_TO_BURN_DAMAGE_NPC_IDS.includes(this.monster.id);
+  }
+
   protected addIssue(type: UserIssueType, message: string) {
     this.userIssues.push({ type, message, loadout: this.opts.loadoutName });
   }
 
+  protected demonbaneVulnerability(): number {
+    if (this.monster.id === -1 && this.monster.inputs.demonbaneVulnerability !== undefined) {
+      return this.monster.inputs.demonbaneVulnerability;
+    } if (this.monster.name === 'Duke Sucellus') {
+      return 70;
+    } if (YAMA_IDS.includes(this.monster.id)) {
+      return 120;
+    } if (YAMA_VOID_FLARE_IDS.includes(this.monster.id)) {
+      return 200;
+    }
+
+    return 100;
+  }
+
   private sanitizeInputs() {
     const eq = this.player.equipment;
+
+    if (this.monster.attributes.includes(MonsterAttribute.DEMON)) {
+      // make sure demonbane effectiveness is set and uses the right value
+      this.monster = {
+        ...this.monster,
+        inputs: {
+          ...this.monster.inputs,
+          demonbaneVulnerability: this.demonbaneVulnerability(),
+        },
+      };
+    }
 
     // make sure monsterCurrentHp is set and valid
     if (!this.monster.inputs.monsterCurrentHp || this.monster.inputs.monsterCurrentHp > this.monster.skills.hp) {
@@ -652,7 +719,7 @@ export default class BaseCalc {
       };
     }
 
-    if (this.player.style.stance !== 'Manual Cast' && ammoApplicability(eq.weapon?.id, eq.ammo?.id) === AmmoApplicability.INVALID) {
+    if (this.player.style.stance !== 'Manual Cast' && this.isAmmoInvalid()) {
       if (eq.ammo?.name) {
         this.addIssue(UserIssueType.EQUIPMENT_WRONG_AMMO, 'This ammo does not work with your current weapon.');
       } else {
@@ -690,7 +757,8 @@ export default class BaseCalc {
 
     // some weapons are only available to use against certain monsters
     if (
-      this.wearing('Dawnbringer') && (this.monster.name !== 'Verzik Vitur' || !this.monster.version?.includes('Phase 1'))
+      (this.wearing('Dawnbringer') && (this.monster.name !== 'Verzik Vitur' || !this.monster.version?.includes('Phase 1'))
+      || (this.wearing('Holy water') && !this.monster.attributes.includes(MonsterAttribute.DEMON)))
     ) {
       this.addIssue(UserIssueType.WEAPON_WRONG_MONSTER, 'This weapon cannot be used against the select monster.');
     }
@@ -701,6 +769,12 @@ export default class BaseCalc {
       || this.wearingAll(['Eclipse moon helm', 'Eclipse moon chestplate', 'Eclipse moon tassets', 'Eclipse atlatl'])
     ) {
       this.addIssue(UserIssueType.EQUIPMENT_SET_EFFECT_UNSUPPORTED, 'The calculator currently does not account for your equipment set effect.');
+    }
+    if (this.wearing('Ring of recoil') || this.wearing('Ring of suffering (i)') || this.wearing('Ring of suffering')) {
+      this.addIssue(UserIssueType.RING_RECOIL_UNSUPPORTED, 'The calculator does not account for recoil damage.');
+    }
+    if (this.wearing('Echo boots')) {
+      this.addIssue(UserIssueType.FEET_RECOIL_UNSUPPORTED, 'The calculator does not account for recoil damage.');
     }
   }
 }

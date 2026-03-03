@@ -26,6 +26,9 @@ const WikiSyncButton: React.FC<IWikiSyncButtonProps> = observer((props) => {
   const [helpIsOpen, setHelpIsOpen] = useState(false);
 
   const onButtonClick = useCallback(() => {
+    // simple logging of button press for usage stats
+    fetch('https://chisel.weirdgloop.org/t/dps/rl');
+
     if (validWikiSyncInstances.size === 0) {
       setHelpIsOpen(true);
     }
@@ -85,6 +88,13 @@ const WikiSyncButton: React.FC<IWikiSyncButtonProps> = observer((props) => {
             <p className="mt-2">
               The calculator will automatically detect RuneLite running on this computer. Once RuneLite is detected, click the RuneLite
               button to import your current player.
+            </p>
+            <p className="mt-2 text-orange-200">
+              Not working?
+              {' '}
+              <a href="https://oldschool.runescape.wiki/w/RS:WSHELP">Click here</a>
+              {' '}
+              for troubleshooting steps.
             </p>
           </div>
         </div>

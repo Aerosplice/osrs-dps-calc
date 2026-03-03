@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import NumberInput from '@/app/components/generic/NumberInput';
 import Toggle from '@/app/components/generic/Toggle';
@@ -10,13 +10,21 @@ import tonalztic from '@/public/img/def_reductions/Tonalztics_of_ralos.png';
 import dwh from '@/public/img/def_reductions/Dragon_warhammer.webp';
 import arc from '@/public/img/def_reductions/Arclight.png';
 import emberlight from '@/public/img/def_reductions/Emberlight.png';
+import seercull from '@/public/img/def_reductions/Seercull.png';
+import ayak from '@/public/img/def_reductions/Eye_of_ayak.png';
 import { observer } from 'mobx-react-lite';
 import { useStore } from '@/state';
+import { getDefenceFloor } from '@/lib/scaling/DefenceReduction';
+import { toJS } from 'mobx';
 
 const DefensiveReductions: React.FC = observer(() => {
   const store = useStore();
   const { isDefensiveReductionsExpanded } = store.ui;
-  const { defenceReductions } = store.monster.inputs;
+  const { monster } = store;
+  const { defenceReductions } = monster.inputs;
+
+  const monsterJs = toJS(monster);
+  const defenceFloor = useMemo(() => getDefenceFloor(monsterJs), [monsterJs]);
 
   return (
     <div className="rounded bg-body-100 dark:bg-dark-500">
@@ -36,6 +44,13 @@ const DefensiveReductions: React.FC = observer(() => {
 
       {isDefensiveReductionsExpanded && (
         <div className="p-2">
+          {defenceFloor !== 0 && (
+            <p className="text-xs mb-2 text-gray-300">
+              Defence floor:
+              {' '}
+              {defenceFloor}
+            </p>
+          )}
           <div className="w-full">
             <NumberInput
               className="form-control w-1/6"
@@ -118,6 +133,34 @@ const DefensiveReductions: React.FC = observer(() => {
               <img src={bgs.src} width={18} className="inline-block" alt="" />
               {' '}
               Bandos godsword damage
+            </span>
+          </div>
+          <div className="w-full">
+            <NumberInput
+              className="form-control w-1/6"
+              required
+              min={0}
+              value={defenceReductions.seercull}
+              onChange={(v) => store.updateMonster({ inputs: { defenceReductions: { seercull: v } } })}
+            />
+            <span className="pl-2">
+              <img src={seercull.src} width={18} className="inline-block" alt="" />
+              {' '}
+              Seercull damage
+            </span>
+          </div>
+          <div className="w-full">
+            <NumberInput
+              className="form-control w-1/6"
+              required
+              min={0}
+              value={defenceReductions.ayak}
+              onChange={(v) => store.updateMonster({ inputs: { defenceReductions: { ayak: v } } })}
+            />
+            <span className="pl-2">
+              <img src={ayak.src} width={18} className="inline-block" alt="" />
+              {' '}
+              Eye of ayak damage
             </span>
           </div>
           <Toggle

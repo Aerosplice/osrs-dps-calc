@@ -13,6 +13,7 @@ export interface PlayerSkills {
   ranged: number;
   str: number;
   mining: number;
+  herblore: number;
 }
 
 export interface EquipmentPiece extends EquipmentStats {
@@ -91,6 +92,7 @@ export interface Player extends EquipmentStats {
    */
   boosts: PlayerSkills;
   equipment: PlayerEquipment;
+  attackSpeed: number;
   prayers: Prayer[];
   buffs: {
     /**
@@ -139,6 +141,6 @@ export interface Player extends EquipmentStats {
      * @see https://oldschool.runescape.wiki/w/Sunfire_rune
      */
     usingSunfireRunes: boolean;
-  }
+  };
   spell: Spell | null;
 }

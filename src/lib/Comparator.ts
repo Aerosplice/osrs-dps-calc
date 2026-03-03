@@ -14,6 +14,7 @@ import { DPS_PRECISION } from '@/lib/constants';
 export enum CompareXAxis {
   MONSTER_DEF,
   MONSTER_MAGIC,
+  MONSTER_MAGIC_DEF,
   MONSTER_HP,
   PLAYER_ATTACK_LEVEL,
   PLAYER_STRENGTH_LEVEL,
@@ -29,6 +30,7 @@ export enum CompareYAxis {
   MONSTER_DPS,
   DAMAGE_TAKEN,
   PLAYER_TTK,
+  PLAYER_MAX_HIT,
 }
 
 interface InputSet {
@@ -64,6 +66,7 @@ export default class Comparator {
     this.yAxis = yAxis;
 
     this.commonOpts = {
+      loadoutName: 'comparator',
       disableMonsterScaling: true,
     };
   }
@@ -98,7 +101,13 @@ export default class Comparator {
 
       case CompareXAxis.MONSTER_MAGIC:
         for (let newMagic = this.baseMonster.skills.magic; newMagic >= 0; newMagic--) {
-          yield monsterInput(newMagic, { skills: { def: newMagic } });
+          yield monsterInput(newMagic, { skills: { magic: newMagic } });
+        }
+        return;
+
+      case CompareXAxis.MONSTER_MAGIC_DEF:
+        for (let newMagicDef = Math.max(this.baseMonster.defensive.magic, 0); newMagicDef >= 0; newMagicDef--) {
+          yield monsterInput(newMagicDef, { defensive: { magic: newMagicDef } });
         }
         return;
 
@@ -179,9 +188,9 @@ export default class Comparator {
     }
   }
 
-  private getOutput(x: InputSet): { [loadout: string]: string } {
-    const res: { [loadout: string]: string } = {};
-    const apply = (resultProvider: (loadout: Player) => string) => x.loadouts.forEach((l) => {
+  private getOutput(x: InputSet): { [loadout: string]: string | undefined } {
+    const res: { [loadout: string]: string | undefined } = {};
+    const apply = (resultProvider: (loadout: Player) => string | undefined) => x.loadouts.forEach((l) => {
       res[l.name] = resultProvider(l);
     });
 
@@ -198,7 +207,7 @@ export default class Comparator {
         break;
 
       case CompareYAxis.PLAYER_TTK:
-        apply((l) => forwardCalc(l).getTtk().toFixed(DPS_PRECISION));
+        apply((l) => forwardCalc(l).getTtk()?.toFixed(DPS_PRECISION));
         break;
 
       case CompareYAxis.MONSTER_DPS:
@@ -206,7 +215,11 @@ export default class Comparator {
         break;
 
       case CompareYAxis.DAMAGE_TAKEN:
-        apply((l) => reverseCalc(l).getAverageDamageTaken().toFixed(DPS_PRECISION));
+        apply((l) => reverseCalc(l).getAverageDamageTaken()?.toFixed(DPS_PRECISION));
+        break;
+
+      case CompareYAxis.PLAYER_MAX_HIT:
+        apply((l) => forwardCalc(l).getMax().toString());
         break;
 
       default:
@@ -259,7 +272,7 @@ export default class Comparator {
     for (const x of this.inputsIterator()) {
       const y = this.getOutput(x);
       for (const k of keys(y)) {
-        const f = parseFloat(y[k]);
+        const f = y[k] ? parseFloat(y[k]!) : 0;
         if (f > domainMax) {
           domainMax = f;
         }

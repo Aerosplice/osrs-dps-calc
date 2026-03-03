@@ -17,7 +17,6 @@ import { observer } from 'mobx-react-lite';
 import { useStore } from '@/state';
 import Select from '@/app/components/generic/Select';
 import { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent';
-import { useTheme } from 'next-themes';
 import equipmentStats from '@/public/img/Equipment Stats.png';
 import SectionAccordion from '@/app/components/generic/SectionAccordion';
 import LazyImage from '@/app/components/generic/LazyImage';
@@ -29,6 +28,7 @@ import { useCalc } from '@/worker/CalcWorker';
 
 const XAxisOptions = [
   { label: 'Monster defence level', axisLabel: 'Level', value: CompareXAxis.MONSTER_DEF },
+  { label: 'Monster magic defence level', axisLabel: 'Level', value: CompareXAxis.MONSTER_MAGIC_DEF },
   { label: 'Monster magic level', axisLabel: 'Level', value: CompareXAxis.MONSTER_MAGIC },
   { label: 'Monster HP', axisLabel: 'Hitpoints', value: CompareXAxis.MONSTER_HP },
   { label: 'Player attack level', axisLabel: 'Level', value: CompareXAxis.PLAYER_ATTACK_LEVEL },
@@ -82,9 +82,6 @@ const LoadoutComparison: React.FC = observer(() => {
   const { showLoadoutComparison } = store.prefs;
   const loadouts = JSON.stringify(store.loadouts);
 
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
-
   const [compareResult, setCompareResult] = useState<CompareResult>();
   const [xAxisType, setXAxisType] = useState<{ label: string, axisLabel?: string, value: CompareXAxis } | null | undefined>(XAxisOptions[0]);
   const [yAxisType, setYAxisType] = useState<{ label: string, axisLabel?: string, value: CompareYAxis } | null | undefined>({ label: 'Player damage-per-second', axisLabel: 'DPS', value: CompareYAxis.PLAYER_DPS });
@@ -95,6 +92,7 @@ const LoadoutComparison: React.FC = observer(() => {
       { label: 'Player damage-per-second', axisLabel: 'DPS', value: CompareYAxis.PLAYER_DPS },
       { label: 'Player expected hit', axisLabel: 'Hit', value: CompareYAxis.PLAYER_EXPECTED_HIT },
       { label: 'Time-to-kill', axisLabel: 'Seconds', value: CompareYAxis.PLAYER_TTK },
+      { label: 'Player max hit', axisLabel: 'Max hit', value: CompareYAxis.PLAYER_MAX_HIT },
       // {label: 'Damage taken', value: YAxisType.DAMAGE_TAKEN}
     ];
 
@@ -157,9 +155,7 @@ const LoadoutComparison: React.FC = observer(() => {
       return [];
     }
 
-    const strokeColours = isDark
-      ? ['cyan', 'yellow', 'lime', 'orange', 'pink']
-      : ['blue', 'chocolate', 'green', 'sienna', 'purple'];
+    const strokeColours = ['cyan', 'yellow', 'lime', 'orange', 'pink', '#8B9BE8'];
 
     const lines: React.ReactNode[] = [];
     keys(compareResult.entries[0]).forEach((k) => {
@@ -177,7 +173,7 @@ const LoadoutComparison: React.FC = observer(() => {
       }
     });
     return lines;
-  }, [compareResult, isDark]);
+  }, [compareResult]);
 
   const generateAnnotations = useCallback((): React.ReactNode[] => {
     if (!compareResult) {
@@ -188,7 +184,7 @@ const LoadoutComparison: React.FC = observer(() => {
       <ReferenceLine
         key={a.label}
         label={{
-          value: a.label, angle: (x ? 90 : 0), fontSize: 12, fill: isDark ? 'white' : 'black',
+          value: a.label, angle: (x ? 90 : 0), fontSize: 12, fill: 'white',
         }}
         x={x ? a.value : undefined}
         y={!x ? a.value : undefined}
@@ -201,7 +197,7 @@ const LoadoutComparison: React.FC = observer(() => {
       ...compareResult.annotations.x.map((a) => toRecharts(a, true)),
       ...compareResult.annotations.y.map((a) => toRecharts(a, false)),
     ];
-  }, [compareResult, isDark]);
+  }, [compareResult]);
 
   return (
     <SectionAccordion
